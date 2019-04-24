@@ -1,12 +1,69 @@
+os: osx
 language: swift
 osx_image: xcode10.2
+cache:
+  - bundler
+
+env:
+  global:
+  - PROJECT="HanekeSwift.xcodeproj"
+  - WORKSPACE="Haneke.xcworkspace"
+  - SCHEME_iOS="Haneke-iOS"
+  - SCHEME_TVOS="Haneke-tvOS"
+  - FRAMEWORK_NAME=HanekeSwift
+  - LC_CTYPE=en_US.UTF-8
+  - LANG=en_US.UTF-8
+
 before_install:
-- brew update
-- brew install carthage || brew outdated carthage || brew upgrade carthage
-install:
-- carthage bootstrap
+  - brew update
+  - brew install carthage || brew outdated carthage || brew upgrade carthage
+  - carthage bootstrap
+
 branches:
   only:
-    - master
-script:
-  - set -o pipefail && xcodebuild build test -workspace Haneke.xcworkspace -scheme Haneke-iOS -destination 'platform=iOS Simulator,name=iPhone X,OS=12.0' | xcpretty --color
+  - master
+  - develop
+
+jobs:
+  include:
+    - &test
+      stage: test
+      name: iOS 12.2
+      env: DESTINATION="OS=12.2,name=iPhone X" SCHEME="$SCHEME_iOS"
+      script:
+        - set -o pipefail
+        - xcodebuild build test -workspace "$WORKSPACE" -scheme "$SCHEME" -destination "$DESTINATION" -enableCodeCoverage YES -configuration Debug ONLY_ACTIVE_ARCH=NO CODE_SIGNING_REQUIRED=NO | bundle exec xcpretty -c;
+
+    - <<: *test
+      name: iOS 10.2
+      env: DESTINATION="OS=10.2,name=iPhone 7 Plus" SCHEME="$SCHEME_iOS"
+
+    - <<: *test
+      name: tvOS 12.2
+      if: "(commit_message =~ /(@test tvOS)/)"
+      env:
+        - DESTINATION="OS=12.2,name=Apple TV 4K" SCHEME="$SCHEME_TVOS"
+
+    - stage: carthage
+      name: carthage
+      os: osx
+      script: carthage build --no-skip-current --configuration Release
+
+    - stage: GitHub Release
+      script: skip
+      before_deploy:
+        - carthage build --no-skip-current
+        - carthage archive $FRAMEWORK_NAME
+      deploy:
+        provider: releases
+        api_key:
+          secure: ha8rOredBdVVaFbCylo8OQSL1uQMclOqlXLS0i7dKgYWX6T8ncOlLCGmjTSDrWCxMyajihdDpNc4vDFqPIyn6WoDyAkQg53OdCTZ/9y2je09Ch8H5xP2iJcafxKbHeIldJqB6HFO+nHYypR5vAzOxFOSICa84EjHSnqslXOITRsqeYaIhntMFc/wrO9yB45VXSdSrf6OUJ7ON4ehN8IqhhQSz+EwaKrVvwtjY/8kzq1ZSZDVmnnPSgdJ7DIYR1LOVw/aO2AcK1f3Euh8jsWy4VQJLALOwgLj+vfNh0P+Yf8yReSDRN5PUGZjuFQaeDjuoPk2MRCgHhML+4avjv+t0FpD/PnReRc/e0IAYmXIBJ98ninnueYqTI0jLHIaHacyxgFopeHWa29ULJmOuVo7Vrx+73BiMArYB7vAkHF7zCIxkUS3C0AD8eHRVtSR95KomR4iMkUJg6dD2bGkdvHVfcf0/8z7LYUkYorsV4TfInb4HDBMIMjjfOW3C6B6klDVhf1ZUoLYNvLmL38FYJ62cBMcj+ic6V5HPyY16FXlzxrAwIr9BN90hzBYWdk3pYCRwtwgJCJmTlqOxM4x1e/zVRO0p2hPgRcaRMVuTM+G9T9jQQ/8RkmENz6NGlNSMVgLC0vcsKRmu+ofXLQ9bNGw674hzwgvnbMgr171JTF3G+M=
+        file: $FRAMEWORK_NAME.framework.zip
+        skip_cleanup: true
+        on:
+          tags: true
+
+stages:
+  - test
+  - carthage
+  - GitHub Release
