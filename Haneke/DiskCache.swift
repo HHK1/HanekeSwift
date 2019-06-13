@@ -45,10 +45,13 @@ open class DiskCache {
         })
     }
     
-    open func setData( _ getData: @autoclosure @escaping () -> Data?, key: String) {
+    open func setData( _ getData: @autoclosure @escaping () -> Data?, key: String, completion: (() -> Void)? = nil) {
         cacheQueue.async(execute: {
             if let data = getData() {
                 self.setDataSync(data, key: key)
+                DispatchQueue.main.async {
+                    completion?()
+                }
             } else {
                 Log.error(message: "Failed to get data for key \(key)")
             }
